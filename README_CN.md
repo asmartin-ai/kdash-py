@@ -35,7 +35,7 @@
 </p>
 
 <p align="center">
-  <b>v0.6.0：冷启动使用量扫描比 0.6.0 之前快约 30×，在同一台机器的本地基准中比 ccusage 快 15×。</b>
+  <b>性能：冷启动使用量扫描比 0.6.0 之前快约 30×，在同一台机器的本地基准中比 ccusage 快 15×。</b>
 </p>
 
 > [!IMPORTANT]
@@ -61,10 +61,10 @@
 ## 功能特性
 
 - **精确 Token 统计**：输入 / 输出 / 缓存 Token 明细
-- **状态栏集成** *[新]*：把实时 Token 使用量挂到 Claude Code（或任何能访问本地 HTTP 端点的 Agent）的状态栏中 — 见[快速开始](#状态栏集成statusline-integration)
+- **状态栏集成** *[新]*：把实时 Token 使用量挂到 Claude Code（或任何能访问本地 HTTP 端点的 Agent）的状态栏中 — 见[状态栏集成](#状态栏集成statusline-integration)
 - **自定义日期范围**：Flatpickr 日期选择器 + 快捷按钮（今天、最近 7 天、本月等）
 - **贡献日历**：2D 热力图 + 3D 等距视图，支持 Tokens / Cost / Messages 切换
-- **会话浏览器**：Codex、Claude Code、OpenCode 的逐会话下钻
+- **会话浏览器**：Codex、Claude Code、OpenCode、Pi 的逐会话下钻
 - **10 款样式主题**：Elevated、Classic、Vibrant、Midnight、Paper、Liquid、Terminal、Brutalist、Arcade、Studio
 - **明暗模式**：自动跟随系统偏好，支持手动切换
 - **PWA 支持**：可作为渐进式 Web 应用安装
@@ -109,75 +109,110 @@ Demo 源码：[tokdash/tokdash.github.io](https://github.com/tokdash/tokdash.git
 - Python **3.10+**
 - 已安装一个或多个[支持的客户端](docs/SUPPORTED_CLIENTS.md)
 
-### 安装（pip）
+### 安装
+
+推荐使用隔离安装：
 
 ```bash
-pip install tokdash
+pipx install tokdash
+```
+
+如果你不使用 pipx：
+
+```bash
+python3 -m pip install --user tokdash
+```
+
+### 首次运行
+
+运行 onboarding 向导：
+
+```bash
+tokdash setup
+```
+
+在平台支持时，向导会配置一个可逆的用户级后台服务，并打印仪表盘地址（默认
+`http://127.0.0.1:55423`）。如果没有可用的服务管理器，它会记录 setup 状态并打印前台运行指引。
+它默认只监听 localhost，本地服务不需要 `sudo`，并且除非你后续使用 `--purge` 卸载，否则会保留使用历史。
+
+如果你通过 Agent、脚本或上层 bundle 做非交互安装：
+
+```bash
+tokdash setup --auto --json
+```
+
+如需先预览 setup 会做什么：
+
+```bash
+tokdash setup --dry-run
+```
+
+### 验证
+
+```bash
+tokdash doctor
+```
+
+`doctor` 会检查运行时、后台服务、配置端口、数据路径以及更新检查状态。自动化场景可使用
+`tokdash doctor --json`。
+
+### 既有安装
+
+如果你是在 onboarding 流程加入前安装的 Tokdash，请先升级：
+
+```bash
+pipx upgrade tokdash
+# 或：python3 -m pip install --user -U tokdash
+```
+
+然后运行 `tokdash doctor`；当你希望 Tokdash 接管后台服务时，再运行 `tokdash setup`。如果你已经有
+手写的 systemd 或 launchd 服务，setup **不会** 静默替换它：默认会拒绝覆盖未带 Tokdash setup 标记的
+`tokdash.service` / plist。你可以继续自行维护该服务、先移除它再运行 setup，或在确认
+`tokdash setup --dry-run` 输出后使用 `tokdash setup --force`。`--force` 也会处理已经占用
+`55423`、但还没有新版 `/health` 指纹的 1.0 之前服务：它会重写并重启现有 `tokdash.service`。
+如果要跳过服务创建，使用 `tokdash setup --no-service`。
+
+### 更新或移除
+
+```bash
+tokdash update       # 升级受管运行时，并在可能时重启服务
+tokdash uninstall    # 精确撤销 setup 创建的内容；默认保留使用历史
+```
+
+`update` 只会驱动 Tokdash 能安全管理的安装方式。如果当前运行时来自 Tokdash 不拥有的包管理器，
+它会打印明确的手动升级建议，而不是修改该环境。
+
+### 远程访问
+
+Tokdash 默认保持回环地址绑定。如需远程访问，推荐：
+
+- 交互式 `tokdash setup`，在检测到 Tailscale 时可显式确认配置 Tailscale Serve；
+- SSH 转发：`ssh -L 55423:127.0.0.1:55423 <user>@<host>`。
+
+有些 Tailscale 安装要求先授予 operator 权限，非 root 用户才能配置 Serve。如果 Tailscale 拒绝
+Serve 配置，交互式向导会提示是否运行一次性的 `sudo tailscale set --operator=$USER`，然后重试
+`tailscale serve`。Tokdash 会使用 tailnet 主机上的 `/tokdash` 路径，因此不会占用域名根路径，
+方便同一台机器继续 Serve 其他工具。Serve 成功后，setup 会打印可从 tailnet 访问的准确
+`https://...ts.net/tokdash` 地址。
+
+Tailscale Serve 下的写接口会因 Tokdash 的回环写入保护而保持只读；如果你需要可信的远程写入，
+请使用 SSH 转发作为认证层。
+
+可以直接绑定到 `0.0.0.0`，但不推荐：Tokdash 的本地 API 不是面向公网的认证服务。
+
+### 前台运行备用方式
+
+如果你只需要一次性的前台进程：
+
+```bash
 tokdash serve
 ```
 
-打开：`http://localhost:55423`
+打开 `http://127.0.0.1:55423`。如果默认端口被占用，使用 `tokdash serve --port <port>`。
 
-如果端口冲突：
-- `tokdash serve --port <port>`
+完整 onboarding 说明，包括运行时选择、WSL/systemd 行为、macOS launchd、Tailscale、bundle
+集成、更新检查和安全卸载语义，见 **[`docs/ONBOARDING.md`](docs/ONBOARDING.md)**。
 
-如果你想从其他设备访问 Tokdash（推荐）：
-- Tailscale Serve（仅对你的 tailnet 可见）：`tailscale serve 55423`
-- SSH 端口转发：`ssh -L 55423:127.0.0.1:55423 <user>@<host>`
-
-也可以绑定到 `0.0.0.0`，但**不推荐**：这会监听所有网络接口，可能把仪表盘暴露到你的局域网/VPN/Wi-Fi 之外。只有在你清楚风险并已配置防火墙/认证时才这样做。
-
-### 后台运行
-
-参见 `docs/agents/systemd/BACKGROUND_RUN.md`，其中包含：
-- Linux systemd（用户服务）模板
-- macOS launchd（LaunchAgent）模板
-- 可选的 `/health` 健康探测看门狗，可在服务卡死时自动重启
-
-#### 面向人类用户
-
-把下面这段提示词复制给你的 LLM 代理（Claude Code、AmpCode、Cursor 等）：
-
-```text
-Install and configure Tokdash to run in the background by following the instructions here:
-https://raw.githubusercontent.com/JingbiaoMei/Tokdash/main/docs/agents/systemd/AGENTS.md
-
-Or read the Background Run guide, but seriously, let an agent do it.
-```
-
-#### 面向 LLM 代理
-
-拉取安装指南并按照其说明执行：
-
-```bash
-curl -s https://raw.githubusercontent.com/JingbiaoMei/Tokdash/main/docs/agents/systemd/AGENTS.md
-```
-
-### 更新 Tokdash
-
-如果你是通过 pip 安装 Tokdash，并通过 systemd 运行它：
-
-```bash
-# 1. 升级包
-pip install --upgrade tokdash
-
-# 2. 重启 systemd 服务以加载新版本
-systemctl --user daemon-reload
-systemctl --user restart tokdash
-
-# 3. 验证新版本
-pip show tokdash | grep Version
-systemctl --user status tokdash --no-pager
-
-# 4. 测试 API 是否正常响应
-curl 'http://127.0.0.1:55423/api/usage?period=today'
-```
-
-如需查看日志：
-
-```bash
-journalctl --user -u tokdash -f
-```
 
 ### OpenClaw 摘要（定时报表）
 
@@ -220,7 +255,7 @@ Tokdash 默认**只监听 localhost**。
 
 - `TOKDASH_HOST`（默认：`127.0.0.1`）
 - `TOKDASH_PORT`（默认：`55423`）
-- `TOKDASH_CACHE_TTL`（默认：`120` 秒）
+- `TOKDASH_CACHE_TTL`（默认：`600` 秒）
 - `TOKDASH_COMPUTE_CONCURRENCY`（默认：`2`）——同时进行的重型历史重解析数量上限；超出的冷请求会立即返回 `503`，而不是在高负载下耗尽服务线程
 - `TOKDASH_LIMIT_CONCURRENCY`（默认：`64`）——uvicorn 接受的最大并发连接数（背压）
 - `TOKDASH_KEEPALIVE`（默认：`5` 秒）——uvicorn keep-alive 超时
@@ -250,12 +285,24 @@ tokdash db resync --pretty
 tokdash db watch --pretty
 ```
 
-示例（通过 Tailscale Serve 远程访问，推荐）：
+通过 Tailscale Serve 远程访问：
 
 ```bash
-tokdash serve --bind 127.0.0.1 --port 55423
-tailscale serve --bg 55423
+tokdash setup
+# 当向导询问是否配置 Tailscale Serve 时，确认即可。
+# Serve 成功后，setup 会打印准确的 https://...ts.net/tokdash 地址。
 ```
+
+如果你已经通过 setup 启动 Tokdash，并希望自己手动管理 Tailscale：
+
+```bash
+tailscale serve --bg --https=443 --set-path=/tokdash http://127.0.0.1:55423
+```
+
+打开 `https://<machine>.<tailnet>.ts.net/tokdash`。用
+`tailscale serve --https=443 --set-path=/tokdash off` 停止这条手动 Serve 规则。
+`tokdash uninstall` 只会撤销 setup 向导创建并记录下来的 Tailscale Serve 规则。
+Tailscale Serve 下的写接口仍然保持只读；如果你需要可信的远程写入，请使用 SSH 转发。
 
 默认情况下，`tokdash serve` 会在启动时自动在浏览器中打开仪表盘一次。使用 `--no-open` 可禁用此行为（在无界面/SSH 环境以及后台服务模板中也会自动跳过）。
 
@@ -263,7 +310,7 @@ tailscale serve --bg 55423
 
 - **无遥测**：Tokdash 不会主动把你的数据发送到任何地方。
 - **本地解析**：使用量由本机会话文件计算得出（见[支持的客户端](docs/SUPPORTED_CLIENTS.md)）。
-- **服务暴露**：Tokdash 默认绑定 `127.0.0.1`。如需远程访问，优先使用 Tailscale Serve 或 SSH 隧道；除非你明确知道风险并配置好了防火墙/认证，否则不要使用 `--bind 0.0.0.0`。
+- **服务暴露**：Tokdash 默认绑定 `127.0.0.1`。如需远程访问，优先使用 Tailscale Serve 或 SSH 隧道；除非你明确知道风险并配置好了防火墙/认证，否则不要使用 `--bind 0.0.0.0`。Tailscale Serve 下的写接口会因 Tokdash 的回环写入保护而保持只读；如果你需要远程写入，请使用 SSH 转发作为认证层。
 
 ## API（本地）
 
@@ -286,7 +333,7 @@ curl 'http://127.0.0.1:55423/api/usage?period=today'
 
 ## 费用精度说明
 
-Token 统计依赖各客户端本地记录的内容。费用由 `src/tokdash/pricing_db.json` 计算，可能滞后于真实服务商价格。如金额敏感，请以你的账单来源为准。
+Token 统计依赖各客户端本地记录的内容。费用默认由内置定价数据库（`src/tokdash/pricing_db.json`）计算；如果存在你在「定价」标签页保存的覆盖文件 `<data_dir>/pricing_db.json`，则改用该覆盖文件（它会完全替换内置费率）。两种情况都可能滞后于真实服务商价格，请将其作为估算值，如金额敏感请以你的账单来源为准。
 
 ## 历史数据保留
 
@@ -336,7 +383,7 @@ tokdash/
 │           ├── index.html        # 单页仪表盘
 │           ├── theme-config.js   # 主题调色板 & 热力图颜色
 │           └── themes.css        # 各主题 CSS 覆写
-└── docs/                   # 路线图 + 后台运行文档 + agent 提示词
+└── docs/                   # Onboarding 指南、API 文档、发布说明与 agent 提示词
 ```
 
 ## License
